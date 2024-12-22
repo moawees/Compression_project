@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:path_provider/path_provider.dart';
+
+import 'package:external_path/external_path.dart';
 import 'package:file_picker/file_picker.dart';
 
 Future<void> compressFile(File file, String algorithm) async {
@@ -30,11 +31,19 @@ Future<void> _handleFile(File file, String algorithm,
     final Response response = await dio.post(url, data: formData);
 
     if (response.statusCode == 200) {
-      // Process the response and save it as a file
-      final String responseBody = response.data;
-      // Adjust based on API response
+      final Map<String, dynamic> responseBody = response.data;
+      if (isCompress) {
+        final String binaryData =
+            responseBody['binary']; // Adjust based on API response
+        final Map<String, String> encodingMap =
+            Map<String, String>.from(responseBody['encoding']);
 
-      await _saveResponseToFile(responseBody, isCompress: isCompress);
+        await _saveResponseToFile(binaryData, encodingMap,
+            isCompress: isCompress);
+      } else {
+        final fileContent = responseBody["decompressed"];
+        await _saveResponseToFile(fileContent, {}, isCompress: isCompress);
+      }
     } else {
       print(
           'Failed to ${isCompress ? 'compress' : 'decompress'} file. Status code: ${response.statusCode}');
@@ -44,12 +53,25 @@ Future<void> _handleFile(File file, String algorithm,
   }
 }
 
-Future<void> _saveResponseToFile(String binaryData,
+Future<void> _saveResponseToFile(
+    String binaryData, Map<String, String> encodingMap,
     {required bool isCompress}) async {
-  final directory = await getApplicationDocumentsDirectory();
+  final downloadsDirectory =
+      await ExternalPath.getExternalStoragePublicDirectory(
+          ExternalPath.DIRECTORY_DOWNLOADS);
+  dynamic content;
+  if (isCompress) {
+    content = {
+      'binary': binaryData,
+      'encoding': encodingMap,
+    };
+  } else {
+    content = binaryData;
+  }
+
   final String fileName = isCompress ? 'compressed.txt' : 'decompressed.txt';
-  final File outputFile = File('${directory.path}/$fileName');
-  await outputFile.writeAsString(json.encode(binaryData));
+  final File outputFile = File('$downloadsDirectory/$fileName');
+  await outputFile.writeAsString(json.encode(content));
   print('File saved at: ${outputFile.path}');
 }
 
